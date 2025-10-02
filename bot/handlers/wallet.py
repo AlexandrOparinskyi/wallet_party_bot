@@ -1,13 +1,15 @@
-from aiogram import Router
+import re
+
+from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from bot.filters import SurveySlugFilter
 from bot.utils import (get_wallets_for_chat,
                        add_wallet_for_chat,
                        delete_wallet_for_chat,
                        add_transaction_for_wallet,
-                       get_wallet_for_name)
+                       get_wallet_for_name, delete_transaction_by_id)
 
 wallet_router = Router()
 
@@ -31,7 +33,7 @@ async def get_wallets(message: Message):
     await message.answer(text)
 
 
-@wallet_router.message(Command("добавь"),)
+@wallet_router.message(Command("добавь"), )
 async def add_wallet(message: Message):
     wallet_name = message.text.split(" ")[1:len(message.text.split(" "))]
 
@@ -60,18 +62,78 @@ async def delete_wallet(message: Message):
 
 @wallet_router.message(SurveySlugFilter())
 async def add_transaction(message: Message):
-    wallet_name, amount = message.text.split(" ")
-    wallet_name = wallet_name.replace("/", "")
-    amount = amount.replace(",", ".")
-    await add_transaction_for_wallet(wallet_name,
-                                     message.chat.id,
-                                     amount)
-    wallet = await get_wallet_for_name(message.chat.id, wallet_name)
+    try:
+        parts = message.text.split(" ", 1)
+        if len(parts) < 2:
+            await message.answer("❌ Формат: /имя_кошелька сумма")
+            return
 
-    if int(amount) > 0:
-        t = "+"
-    else:
-        t =""
+        wallet_name = parts[0].replace("/", "")
+        expression = parts[1].replace(",", ".")
 
-    await message.answer(f"Запомнил: {t}{amount}\n"
-                         f"Баланс <b>{wallet_name}</b>: {wallet.get_total}")
+        # Безопасная обработка выражения
+        amount = await safe_evaluate_expression(expression)
+
+        transaction_id = await add_transaction_for_wallet(wallet_name,
+                                                          message.chat.id,
+                                                          amount)
+        wallet = await get_wallet_for_name(message.chat.id, wallet_name)
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="Откатить",
+                    callback_data=f"back_{transaction_id}"
+                )]
+            ]
+        )
+
+        # Форматирование вывода
+        sign = "+" if amount > 0 else ""
+        await message.answer(f"Запомнил: {sign}{amount}\n"
+                             f"Баланс <b>{wallet_name}</b>: {wallet.get_total}",
+                             reply_markup=keyboard)
+
+    except ValueError as e:
+        await message.answer(f"❌ Ошибка в выражении: {e}")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+async def safe_evaluate_expression(expression: str) -> float:
+    """Безопасное вычисление математического выражения"""
+    # Удаляем все пробелы
+    expression = expression.replace(" ", "")
+
+    # Проверяем, что выражение содержит только разрешённые символы
+    if not re.match(r'^[0-9+\-*/().]+$', expression):
+        raise ValueError("Недопустимые символы в выражении")
+
+    # Проверяем сбалансированность скобок
+    if expression.count('(') != expression.count(')'):
+        raise ValueError("Несбалансированные скобки")
+
+    try:
+        # Вычисляем выражение
+        result = eval(expression, {"__builtins__": {}}, {})
+
+        # Проверяем, что результат - число
+        if not isinstance(result, (int, float)):
+            raise ValueError("Результат не является числом")
+
+        return float(result)
+
+    except ZeroDivisionError:
+        raise ValueError("Деление на ноль")
+    except Exception as e:
+        raise ValueError(f"Некорректное выражение")
+
+
+@wallet_router.callback_query(F.data.startswith("back_"))
+async def back_transaction(callback: CallbackQuery):
+    await callback.message.delete()
+
+    trans_id = callback.data.split("_")[1]
+    await delete_transaction_by_id(int(trans_id))
+
+    await callback.answer("Транзакция удалена")

@@ -4,4 +4,5 @@ __all__ = ["get_wallets_for_chat",
            "add_wallet_for_chat",
            "delete_wallet_for_chat",
            "add_transaction_for_wallet",
-           "get_wallet_for_name"]
+           "get_wallet_for_name",
+           "delete_transaction_by_id"]

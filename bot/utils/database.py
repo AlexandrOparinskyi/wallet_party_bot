@@ -1,7 +1,8 @@
 import logging
+from idlelib.pyparse import trans
 from typing import List, Optional
 
-from sqlalchemy import select, insert
+from sqlalchemy import select, insert, delete
 
 from database import Wallet, get_async_session, Transaction
 
@@ -56,15 +57,25 @@ async def delete_wallet_for_chat(name: str, chat_id: int) -> bool:
 
 async def add_transaction_for_wallet(wallet_name: str,
                                      chat_id: int,
-                                     amount: str) -> None:
+                                     amount: float) -> None:
     async with get_async_session() as session:
         wallet = await session.scalar(select(Wallet).where(
             Wallet.name == wallet_name,
             Wallet.chat_id == chat_id
         ))
 
-        await session.execute(insert(Transaction).values(
+        res = await session.execute(insert(Transaction).values(
             wallet_id=wallet.id,
-            amount=float(amount)
+            amount=amount
+        ).returning(Transaction.id))
+        await session.commit()
+
+        return res.scalar()
+
+
+async def delete_transaction_by_id(trans_id: int) -> None:
+    async with get_async_session() as session:
+        await session.execute(delete(Transaction).where(
+            Transaction.id == trans_id
         ))
         await session.commit()
