@@ -33,9 +33,9 @@ async def get_wallets(message: Message):
     await message.answer(text)
 
 
-@wallet_router.message(Command("добавь"), )
+@wallet_router.message(Command("добавь"))
 async def add_wallet(message: Message):
-    wallet_name = message.text.split(" ")[1:len(message.text.split(" "))]
+    wallet_name = message.text.split(" ")[1]
 
     flag = await add_wallet_for_chat(" ".join(wallet_name),
                                      message.chat.id)
@@ -48,7 +48,7 @@ async def add_wallet(message: Message):
 
 @wallet_router.message(Command("удали"))
 async def delete_wallet(message: Message):
-    wallet_name = message.text.split(" ")[1:len(message.text.split(" "))]
+    wallet_name = message.text.split(" ")[1]
 
     flag = await delete_wallet_for_chat(" ".join(wallet_name),
                                         message.chat.id)
@@ -63,7 +63,7 @@ async def delete_wallet(message: Message):
 @wallet_router.message(SurveySlugFilter())
 async def add_transaction(message: Message):
     try:
-        parts = message.text.split(" ", 1)
+        parts = message.text.split(" ")
         if len(parts) < 2:
             await message.answer("❌ Формат: /имя_кошелька сумма")
             return
